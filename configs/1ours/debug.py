@@ -28,7 +28,7 @@ train_dataset = dict(
             dict(type='LoadImageFromFile', backend_args=None),
             dict(type='LoadExtractClipText', 
                         text_encoder_model='RN50', 
-                        save_folder=data_root+'capfeat/', init_clip=False, ann_file=data_root+'annotation.json')
+                        save_folder=data_root+'capfeat/', init_clip=True, ann_file=data_root+'annotation.json')
         ],
         filter_cfg=dict(filter_empty_gt=False),
         backend_args=None),
