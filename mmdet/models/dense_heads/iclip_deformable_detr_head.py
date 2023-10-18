@@ -165,7 +165,7 @@ class IclipDeformableDETRHead(DeformableDETRHead):
         caption_feat_1_GPU = torch.cat(caption_feat, dim=0)
         pad_caption_feat_1_GPU = torch.nn.functional.pad(caption_feat_1_GPU,
                                                          (0, 0, 0, batch_size_per_GPU*100 - caption_feat_1_GPU.shape[0]))
-        print(1,caption_feat_1_GPU, gt_per_img)
+        print(caption_feat_1_GPU.device, 1,caption_feat_1_GPU, gt_per_img)
 
         if not self.gather_all_cap:
             return caption_feat_1_GPU, gt_per_img
@@ -180,9 +180,8 @@ class IclipDeformableDETRHead(DeformableDETRHead):
             pad_caption_feat_7_GPU = remove_pad(torch.cat(gathered_tensors, dim=0))
 
             pad_caption_feat_all_GPU = torch.cat([pad_caption_feat_1_GPU, pad_caption_feat_7_GPU], dim=0)
-            print(2,pad_caption_feat_1_GPU)
-            print(3,pad_caption_feat_all_GPU)
-            print(4,pad_caption_feat_1_GPU.shape)
-            print(5,pad_caption_feat_7_GPU.shape)
-            print(6,pad_caption_feat_all_GPU.shape)
+            print(local_rank, world_size, 2, pad_caption_feat_1_GPU)
+            print(local_rank, world_size, 3,pad_caption_feat_all_GPU)
+            print(local_rank, world_size, 4,pad_caption_feat_1_GPU.shape)
+            print(local_rank, world_size, 5,pad_caption_feat_7_GPU.shape)
             return pad_caption_feat_all_GPU, gt_per_img

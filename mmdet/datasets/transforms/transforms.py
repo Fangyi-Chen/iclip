@@ -4030,7 +4030,7 @@ class LoadExtractClipText(BaseTransform):
 
             with open(ann_file) as f:
                 annos = json.load(f)
-            random.shuffle(annos)
+
             for ann in tqdm(annos, desc=f"Caption -> ClipTextEncoder:{text_encoder_model} initializing"):
                 caption = ann['caption']
                 img_id = Path(ann['image']).stem.split('_')[-1]
