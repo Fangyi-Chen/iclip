@@ -4,10 +4,11 @@ import inspect
 import math
 import warnings
 from typing import List, Optional, Sequence, Tuple, Union
-
-import cv2
+import os, torch, clip
+import cv2, json
 import mmcv
 import numpy
+from tqdm import tqdm
 import numpy as np
 from mmcv.image import imresize
 from mmcv.image.geometric import _scale_size
@@ -19,6 +20,7 @@ from mmcv.transforms.utils import avoid_cache_randomness, cache_randomness
 from mmengine.dataset import BaseDataset
 from mmengine.utils import is_str
 from numpy import random
+from pathlib import Path
 
 from mmdet.registry import TRANSFORMS
 from mmdet.structures.bbox import HorizontalBoxes, autocast_box_type
@@ -3853,3 +3855,197 @@ class CachedMixUp(BaseTransform):
         repr_str += f'random_pop={self.random_pop}, '
         repr_str += f'prob={self.prob})'
         return repr_str
+
+
+
+@TRANSFORMS.register_module()
+class Collage(BaseTransform):
+    """Mosaic augmentation.
+
+    Given 4 images, mosaic transform combines them into
+    one output image. The output image is composed of the parts from each sub-
+    image.
+
+    .. code:: text
+
+                        mosaic transform
+                           center_x
+                +------------------------------+
+                |       pad        |  pad      |
+                |      +-----------+           |
+                |      |           |           |
+                |      |  image1   |--------+  |
+                |      |           |        |  |
+                |      |           | image2 |  |
+     center_y   |----+-------------+-----------|
+                |    |   cropped   |           |
+                |pad |   image3    |  image4   |
+                |    |             |           |
+                +----|-------------+-----------+
+                     |             |
+                     +-------------+
+
+     The mosaic transform steps are as follows:
+
+         1. Choose the mosaic center as the intersections of 4 images
+         2. Get the left top image according to the index, and randomly
+            sample another 3 images from the custom dataset.
+         3. Sub image will be cropped if image is larger than mosaic patch
+
+    Required Keys:
+
+    - img
+    - gt_bboxes (BaseBoxes[torch.float32]) (optional)
+    - gt_bboxes_labels (np.int64) (optional)
+    - gt_ignore_flags (bool) (optional)
+    - mix_results (List[dict])
+
+    Modified Keys:
+
+    - img
+    - img_shape
+    - gt_bboxes (optional)
+    - gt_bboxes_labels (optional)
+    - gt_ignore_flags (optional)
+
+    Args:
+        img_scale (Sequence[int]): Image size before mosaic pipeline of single
+            image. The shape order should be (width, height).
+            Defaults to (640, 640).
+        center_ratio_range (Sequence[float]): Center ratio range of mosaic
+            output. Defaults to (0.5, 1.5).
+        bbox_clip_border (bool, optional): Whether to clip the objects outside
+            the border of the image. In some dataset like MOT17, the gt bboxes
+            are allowed to cross the border of images. Therefore, we don't
+            need to clip the gt bboxes in these cases. Defaults to True.
+        pad_val (int): Pad value. Defaults to 114.
+        prob (float): Probability of applying this transformation.
+            Defaults to 1.0.
+    """
+
+    def __init__(self,
+                 img_scale: Tuple[int, int] = (640, 640),
+                 grid_range: Tuple[int, int] = (2, 11)) -> None:
+        assert isinstance(img_scale, tuple)
+        self.grid_range = grid_range
+        log_img_scale(img_scale, skip_square=True, shape_order='wh')
+        self.img_scale = img_scale
+
+    @cache_randomness
+    def get_indexes(self, dataset: BaseDataset) -> int:
+        self.n = random.randint(self.grid_range[0], self.grid_range[1])
+        indexes = [random.randint(0, len(dataset)) for _ in range(self.n**2-1)]
+        return indexes
+
+    @autocast_box_type()
+    def transform(self, results: dict) -> dict:
+        assert 'mix_results' in results
+
+        result_patch = copy.deepcopy(results)
+        others_patch = copy.deepcopy(results['mix_results'])
+        sub_img_wh = self.img_scale[0] // self.n
+
+        for i in range(self.n):
+            if i == 0: # first row
+                img_row = mmcv.imresize(
+                        result_patch['img'], (sub_img_wh, sub_img_wh))
+                gt_bboxes = np.array([[sub_img_wh//2, sub_img_wh//2]], dtype=np.float32)
+                for other_patch in others_patch[0:self.n-1]:
+                    img_o = mmcv.imresize(
+                        other_patch['img'], (sub_img_wh, sub_img_wh))
+                    img_row = np.concatenate((img_row, img_o), axis=1)
+                    gt_bboxes = np.concatenate((gt_bboxes, gt_bboxes[-1].reshape((1,2))+[sub_img_wh, 0]), axis=0)
+                img_col = img_row
+                gt_bboxes = np.expand_dims(gt_bboxes, axis=0)
+            else:
+                img_row = None
+                for other_patch in others_patch[i*self.n-1 : (i+1)*self.n-1]:
+                    img_o = mmcv.imresize(
+                        other_patch['img'], (sub_img_wh, sub_img_wh))
+                    img_row = np.concatenate((img_row, img_o), axis=1) if img_row is not None else img_o
+                img_col = np.concatenate((img_col, img_row), axis=0)
+                gt_bboxes = np.concatenate((gt_bboxes, gt_bboxes[-1,:].reshape((1,-1,2))+[[0, sub_img_wh]]), axis=0)
+        results['img'] = img_col
+        results['img_shape'] = img_col.shape[:2]
+
+        results['gt_bboxes'] = self.get_bboxes_target(gt_bboxes, sub_img_wh)
+        results['gt_bboxes_labels'] = self.get_pseudo_label(gt_bboxes)
+
+        caption_feat = [results['capfeat']]
+        for i in results['mix_results']:
+            caption_feat.append(i['capfeat'])
+        results['capfeat'] = torch.cat(caption_feat, dim=0)
+        return results
+
+    def get_pseudo_label(self, bboxes):
+        n = len(bboxes.reshape(-1, 2))
+        return np.arange(n)
+
+    def get_bboxes_target(self, bboxes, sub_img_wh):
+        locat_info = bboxes.reshape(-1, 2)
+        scale_info = np.array([[sub_img_wh, sub_img_wh]])
+        n = locat_info.shape[0]
+        expanded_array = np.tile(scale_info, (n, 1))
+        res = np.concatenate((locat_info, expanded_array), axis=1).astype(np.float32)
+        return self.cxcywh_to_xyxy(res)
+
+    def cxcywh_to_xyxy(self, xcycwh_bboxes):
+        xyxy_bboxes = xcycwh_bboxes.copy()
+        xyxy_bboxes[:, 0] = xcycwh_bboxes[:, 0] - xcycwh_bboxes[:, 2] // 2  # Calculate X1
+        xyxy_bboxes[:, 1] = xcycwh_bboxes[:, 1] - xcycwh_bboxes[:, 3] // 2  # Calculate Y1
+        xyxy_bboxes[:, 2] = xcycwh_bboxes[:, 0] + xcycwh_bboxes[:, 2] // 2  # Calculate X2
+        xyxy_bboxes[:, 3] = xcycwh_bboxes[:, 1] + xcycwh_bboxes[:, 3] // 2  # Calculate Y2
+        return xyxy_bboxes
+
+    def __repr__(self):
+        repr_str = self.__class__.__name__
+        repr_str += f'(img_scale={self.img_scale}, '
+        return repr_str
+
+
+@TRANSFORMS.register_module()
+class LoadExtractClipText(BaseTransform):
+    """
+    available_models = \
+        ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
+    """
+    def __init__(self,
+                 text_encoder_model='RN50',
+                 save_folder='',
+                 init_clip=False,
+                 ann_file='') -> None:
+        assert text_encoder_model in clip.available_models()
+
+        self.save_folder = os.path.join(save_folder, text_encoder_model)
+        if not os.path.exists(self.save_folder):
+            os.makedirs(self.save_folder)
+
+        self.init_clip = init_clip
+        if self.init_clip:
+            self.clip_model, self.preprocess = clip.load(text_encoder_model, 'cuda')
+            self.clip_model.eval()
+            for child in self.clip_model.children():
+                for param in child.parameters():
+                    param.requires_grad = False
+
+            with open(ann_file) as f:
+                annos = json.load(f)
+
+            for ann in tqdm(annos, desc=f"Caption -> ClipTextEncoder:{text_encoder_model} initializing"):
+                caption = ann['caption']
+                img_id = Path(ann['image']).stem.split('_')[-1]
+                feat_path = os.path.join(self.save_folder, img_id + '.pt')
+                if not os.path.exists(feat_path):
+                    capt_feat = self.clip_model.encode_text(clip.tokenize(caption, truncate=True).to('cuda')).detach()
+                    torch.save(capt_feat.cpu(), feat_path)
+
+    def transform(self, results: dict) -> Optional[dict]:
+        feat_path = os.path.join(self.save_folder, results['img_id']+'.pt')
+
+        if os.path.exists(feat_path):
+            capt_feat = torch.load(feat_path)
+        else:
+            raise EOFError
+
+        results['capfeat'] = capt_feat
+        return results

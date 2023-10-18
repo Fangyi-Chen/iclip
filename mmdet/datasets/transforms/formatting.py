@@ -44,7 +44,8 @@ class PackDetInputs(BaseTransform):
     mapping_table = {
         'gt_bboxes': 'bboxes',
         'gt_bboxes_labels': 'labels',
-        'gt_masks': 'masks'
+        'gt_masks': 'masks',
+        'capfeat': 'capfeats'
     }
 
     def __init__(self,
