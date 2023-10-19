@@ -7,13 +7,14 @@ import torch.nn as nn
 from mmcv.cnn import Linear
 from mmengine.model import bias_init_with_prob, constant_init
 from torch import Tensor
+import torch.nn.functional as F
 
 from mmdet.registry import MODELS
 from mmdet.structures import SampleList
 from mmdet.utils import InstanceList, OptInstanceList
 from ..layers import inverse_sigmoid
 from .deformable_detr_head import DeformableDETRHead
-
+import numpy as np
 
 @MODELS.register_module()
 class IclipDeformableDETRHead(DeformableDETRHead):
@@ -44,9 +45,11 @@ class IclipDeformableDETRHead(DeformableDETRHead):
         if torch.cuda.device_count() > 1:
             assert gather_all_cap
 
+        self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1/0.07))
+
     def forward(self, hidden_states: Tensor,
                 references: List[Tensor],
-                capfeat) -> Tuple[Tensor]:
+                caption_feat_all_GPU) -> Tuple[Tensor]:
         """Forward function.
 
         Args:
@@ -74,16 +77,21 @@ class IclipDeformableDETRHead(DeformableDETRHead):
               h), has shape (num_decoder_layers, bs, num_queries, 4) with the
               last dimension arranged as (cx, cy, w, h).
         """
-
-
         all_layers_outputs_classes = []
         all_layers_outputs_coords = []
+
+        self.cls_out_channels = len(caption_feat_all_GPU)  # this is used for cls_score reshape in loss_by_feat_single
+        self.num_classes = len(caption_feat_all_GPU)  # this is used for init labels full in detr_head.py
+        caption_feat_all_GPU = caption_feat_all_GPU.T.to(torch.float32)
 
         for layer_id in range(hidden_states.shape[0]):
             reference = inverse_sigmoid(references[layer_id])
             # NOTE The last reference will not be used.
             hidden_state = hidden_states[layer_id]
-            outputs_class = self.cls_branches[layer_id](hidden_state)
+            outputs_cls_feat = self.cls_branches[layer_id](hidden_state)
+            outputs_cls_feat = F.normalize(outputs_cls_feat, dim=2)
+            outputs_class = outputs_cls_feat @ caption_feat_all_GPU * self.logit_scale.exp()
+
             tmp_reg_preds = self.reg_branches[layer_id](hidden_state)
             if reference.shape[-1] == 4:
                 # When `layer` is 0 and `as_two_stage` of the detector
@@ -102,7 +110,8 @@ class IclipDeformableDETRHead(DeformableDETRHead):
 
         all_layers_outputs_classes = torch.stack(all_layers_outputs_classes)
         all_layers_outputs_coords = torch.stack(all_layers_outputs_coords)
-
+        if np.random.randint(200) == 1:
+            print(self.logit_scale.exp())
         return all_layers_outputs_classes, all_layers_outputs_coords
 
     def loss(self, hidden_states: Tensor, references: List[Tensor],
@@ -142,14 +151,19 @@ class IclipDeformableDETRHead(DeformableDETRHead):
         batch_gt_instances = []
         batch_img_metas = []
         caption_feat = []
+        idx_wrapper = 0
         for data_sample in batch_data_samples:
             batch_img_metas.append(data_sample.metainfo)
+
+            data_sample.gt_instances['labels'] += idx_wrapper # align the pseudo label with caption idx
+            idx_wrapper += len(data_sample.gt_instances['capfeats'])
+
             batch_gt_instances.append(data_sample.gt_instances)
             caption_feat.append(data_sample.gt_instances['capfeats'])
 
-        caption_feat = self.gather_all_capfeat(caption_feat)
+        caption_feat_all_GPU, gt_per_img = self.gather_all_capfeat(caption_feat)
 
-        outs = self(hidden_states, references, caption_feat)
+        outs = self(hidden_states, references, caption_feat_all_GPU)
         loss_inputs = outs + (enc_outputs_class, enc_outputs_coord,
                               batch_gt_instances, batch_img_metas)
         losses = self.loss_by_feat(*loss_inputs)
@@ -163,9 +177,10 @@ class IclipDeformableDETRHead(DeformableDETRHead):
         gt_per_img = [len(_) for _ in caption_feat]
 
         caption_feat_1_GPU = torch.cat(caption_feat, dim=0)
+        caption_feat_1_GPU = F.normalize(caption_feat_1_GPU, dim=1)
         pad_caption_feat_1_GPU = torch.nn.functional.pad(caption_feat_1_GPU,
                                                          (0, 0, 0, batch_size_per_GPU*100 - caption_feat_1_GPU.shape[0]))
-        print(caption_feat_1_GPU.device, 1,caption_feat_1_GPU, gt_per_img)
+        #print(caption_feat_1_GPU.device, 1,caption_feat_1_GPU, gt_per_img)
 
         if not self.gather_all_cap:
             return caption_feat_1_GPU, gt_per_img
@@ -176,12 +191,12 @@ class IclipDeformableDETRHead(DeformableDETRHead):
             torch.distributed.all_gather(gathered_tensors, pad_caption_feat_1_GPU)
             on_this_GPU = gathered_tensors.pop(local_rank)
 
-            pad_caption_feat_1_GPU = remove_pad(on_this_GPU)
-            pad_caption_feat_7_GPU = remove_pad(torch.cat(gathered_tensors, dim=0))
+            caption_feat_1_GPU = remove_pad(on_this_GPU)
+            caption_feat_7_GPU = remove_pad(torch.cat(gathered_tensors, dim=0))
 
-            pad_caption_feat_all_GPU = torch.cat([pad_caption_feat_1_GPU, pad_caption_feat_7_GPU], dim=0)
-            print(local_rank, world_size, 2, pad_caption_feat_1_GPU)
-            print(local_rank, world_size, 3,pad_caption_feat_all_GPU)
-            print(local_rank, world_size, 4,pad_caption_feat_1_GPU.shape)
-            print(local_rank, world_size, 5,pad_caption_feat_7_GPU.shape)
-            return pad_caption_feat_all_GPU, gt_per_img
+            caption_feat_all_GPU = torch.cat([caption_feat_1_GPU, caption_feat_7_GPU], dim=0)
+            #print(local_rank, world_size, 2, caption_feat_1_GPU)
+            #print(local_rank, world_size, 3,caption_feat_all_GPU)
+            #print(local_rank, world_size, 4,caption_feat_1_GPU.shape)
+            #print(local_rank, world_size, 5,caption_feat_7_GPU.shape)
+            return caption_feat_all_GPU, gt_per_img

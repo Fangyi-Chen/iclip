@@ -1,4 +1,4 @@
-_base_ = 'deformable-detr-refine-twostage_r50_16xb2-50e_coco.py'
+_base_ = 'deformable-detr-refine_r50_16xb2-50e_coco.py'
 
 dataset_type = 'IclipDataset'
 data_root = '/media/fangyi/2019/2023/data/yfcc15m/'
@@ -28,7 +28,7 @@ train_dataset = dict(
             dict(type='LoadImageFromFile', backend_args=None),
             dict(type='LoadExtractClipText', 
                         text_encoder_model='RN50', 
-                        save_folder=data_root+'capfeat/', init_clip=True, ann_file=data_root+'annotation.json')
+                        save_folder=data_root+'capfeat/', init_clip=False, ann_file=data_root+'annotation.json')
         ],
         filter_cfg=dict(filter_empty_gt=False),
         backend_args=None),
@@ -41,16 +41,18 @@ train_dataloader = dict(
     sampler=dict(type='DefaultSampler', shuffle=True),
     dataset=train_dataset)
 
-model = dict(bbox_head=dict(type='IclipDeformableDETRHead', num_classes=100, gather_all_cap=True))
+model = dict(bbox_head=dict(type='IclipDeformableDETRHead', num_classes=1024, gather_all_cap=False))
 
 
+
+train_cfg = dict(max_epochs=1, type='EpochBasedTrainLoop', val_interval=1000)
 val_cfg = None
 val_dataloader = None
 val_evaluator = None
 test_cfg = None
 test_dataloader = None
 test_evaluator = None
-train_cfg = dict(max_epochs=50, type='EpochBasedTrainLoop', val_interval=1000)
+
 
 
 
