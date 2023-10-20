@@ -111,7 +111,7 @@ class IclipDeformableDETRHead(DeformableDETRHead):
 
         all_layers_outputs_classes = torch.stack(all_layers_outputs_classes)
         all_layers_outputs_coords = torch.stack(all_layers_outputs_coords)
-        if np.random.randint(10000) == 1:
+        if np.random.randint(5000) == 1:
             print(self.logit_scale.exp())
         return all_layers_outputs_classes, all_layers_outputs_coords
 
