@@ -46,6 +46,7 @@ class IclipDeformableDETRHead(DeformableDETRHead):
             assert gather_all_cap
 
         self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1/0.07))
+        print('Using iclip deformable detr head!')
 
     def forward(self, hidden_states: Tensor,
                 references: List[Tensor],
@@ -110,7 +111,7 @@ class IclipDeformableDETRHead(DeformableDETRHead):
 
         all_layers_outputs_classes = torch.stack(all_layers_outputs_classes)
         all_layers_outputs_coords = torch.stack(all_layers_outputs_coords)
-        if np.random.randint(200) == 1:
+        if np.random.randint(10000) == 1:
             print(self.logit_scale.exp())
         return all_layers_outputs_classes, all_layers_outputs_coords
 
