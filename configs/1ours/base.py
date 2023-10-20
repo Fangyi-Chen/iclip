@@ -36,7 +36,7 @@ train_dataset = dict(
 
 train_dataloader = dict(
     batch_size=20,
-    num_workers=8,
+    num_workers=5,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
     dataset=train_dataset)
