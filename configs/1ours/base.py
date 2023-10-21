@@ -45,7 +45,7 @@ model = dict(bbox_head=dict(type='IclipDeformableDETRHead', num_classes=1024, ga
 
 
 
-train_cfg = dict(max_epochs=1, type='EpochBasedTrainLoop', val_interval=1000)
+train_cfg = dict(max_epochs=1, type='EpochBasedTrainLoop', val_interval=10000000000000)
 val_cfg = None
 val_dataloader = None
 val_evaluator = None
