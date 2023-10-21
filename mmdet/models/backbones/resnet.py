@@ -9,7 +9,8 @@ from torch.nn.modules.batchnorm import _BatchNorm
 
 from mmdet.registry import MODELS
 from ..layers import ResLayer
-
+import clip
+import torch
 
 class BasicBlock(BaseModule):
     expansion = 1
@@ -670,3 +671,72 @@ class ResNetV1d(ResNet):
     def __init__(self, **kwargs):
         super(ResNetV1d, self).__init__(
             deep_stem=True, avg_down=True, **kwargs)
+
+
+@MODELS.register_module()
+class ResNetClip(BaseModule):
+
+    def __init__(self,
+                 depth,
+                 in_channels=3,
+                 stem_channels=None,
+                 base_channels=64,
+                 num_stages=4,
+                 strides=(1, 2, 2, 2),
+                 dilations=(1, 1, 1, 1),
+                 out_indices=(0, 1, 2, 3),
+                 style='pytorch',
+                 deep_stem=False,
+                 avg_down=False,
+                 frozen_stages=-1,
+                 conv_cfg=None,
+                 norm_cfg=dict(type='BN', requires_grad=True),
+                 norm_eval=True,
+                 dcn=None,
+                 stage_with_dcn=(False, False, False, False),
+                 plugins=None,
+                 with_cp=False,
+                 zero_init_residual=True,
+                 pretrained=None,
+                 load_clip_backbone=None,
+                 init_cfg=None):
+        super(ResNetClip, self).__init__(init_cfg)
+        model, preprocess = clip.load(load_clip_backbone)
+
+        self.modelv = model.visual
+        self.modelv.float()
+        self.out_indices = out_indices
+
+    def _freeze_stages(self):
+        print('Already freezed using clip backbone')
+
+    def forward(self, x):
+        """Forward function."""
+        with torch.no_grad():
+            x = self.modelv.conv1(x)
+            x = self.modelv.bn1(x)
+            x = self.modelv.relu1(x)
+
+            x = self.modelv.conv2(x)
+            x = self.modelv.bn2(x)
+            x = self.modelv.relu2(x)
+
+            x = self.modelv.conv3(x)
+            x = self.modelv.bn3(x)
+            x = self.modelv.relu3(x)
+
+            x = self.modelv.avgpool(x)
+
+            outs = []
+            for i, layer_name in enumerate(['layer1', 'layer2', 'layer3', 'layer4']):
+                res_layer = getattr(self.modelv, layer_name)
+                x = res_layer(x)
+                if i in self.out_indices:
+                    outs.append(x)
+
+        return tuple(outs)
+
+    def train(self, mode=True):
+        """Convert the model into training mode while keep normalization layer
+        freezed."""
+        print('not supported training mode yet')

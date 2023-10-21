@@ -12,7 +12,7 @@ from .pvt import PyramidVisionTransformer, PyramidVisionTransformerV2
 from .regnet import RegNet
 from .res2net import Res2Net
 from .resnest import ResNeSt
-from .resnet import ResNet, ResNetV1d
+from .resnet import ResNet, ResNetV1d, ResNetClip
 from .resnext import ResNeXt
 from .ssd_vgg import SSDVGG
 from .swin import SwinTransformer
