@@ -703,6 +703,11 @@ class ResNetClip(BaseModule):
         super(ResNetClip, self).__init__(init_cfg)
         model, preprocess = clip.load(load_clip_backbone)
 
+        model.eval()
+        for child in model.children():
+            for param in child.parameters():
+                param.requires_grad = False
+
         self.modelv = model.visual
         self.modelv.float()
         self.out_indices = out_indices
