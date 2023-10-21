@@ -744,4 +744,4 @@ class ResNetClip(BaseModule):
     def train(self, mode=True):
         """Convert the model into training mode while keep normalization layer
         freezed."""
-        print('not supported training mode yet')
+        return
