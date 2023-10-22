@@ -30,6 +30,7 @@ param_scheduler = [
 ]
 
 train_cfg = dict(
+    _delete_ = True,
     type='IterBasedTrainLoop',
     max_iters=max_iters,
     val_interval=10000000000000)
