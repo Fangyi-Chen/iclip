@@ -136,7 +136,7 @@ class DetVisualizationHook(Hook):
             if self.test_out_dir is not None:
                 out_file = osp.basename(img_path)
                 out_file = osp.join(self.test_out_dir, out_file)
-
+            img = data_batch['inputs'][0].permute(1,2,0).numpy(); self.wait_time=100; self.score_thr=0.05
             self._visualizer.add_datasample(
                 osp.basename(img_path) if self.show else 'test_img',
                 img,

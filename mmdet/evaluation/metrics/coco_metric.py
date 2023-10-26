@@ -372,10 +372,10 @@ class CocoMetric(BaseMetric):
             gt['img_id'] = data_sample['img_id']
             if self._coco_api is None:
                 # TODO: Need to refactor to support LoadAnnotations
-                assert 'instances' in data_sample, \
+                assert 'gt_instances' in data_sample, \
                     'ground truth is required for evaluation when ' \
                     '`ann_file` is not provided'
-                gt['anns'] = data_sample['instances']
+                gt['anns'] = data_sample['gt_instances']
             # add converted result to the results list
             self.results.append((gt, result))
 

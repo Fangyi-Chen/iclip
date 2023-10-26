@@ -80,26 +80,17 @@ val_dataloader = dict(
     sampler=dict(type='DefaultSampler', shuffle=False),
     dataset=val_dataset)
 
-
-
-
-
-
-
-
 val_cfg = dict(type='ValLoop')
 test_cfg = dict(type='TestLoop')
-
 val_dataloader = val_dataloader
 test_dataloader = val_dataloader
 
-backend_args = None
 val_evaluator = dict(
     type='CocoMetric',
-    ann_file='/home/fangyi/data/coco/' + 'annotations/instances_val2017.json',
+    ann_file=None,
     metric='bbox',
     format_only=False,
-    backend_args=backend_args)
+    backend_args=None)
 test_evaluator = val_evaluator
 
 
