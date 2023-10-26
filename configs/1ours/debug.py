@@ -44,15 +44,63 @@ train_dataloader = dict(
 model = dict(bbox_head=dict(type='IclipDeformableDETRHead', num_classes=1024, gather_all_cap=False))
 
 
-
 train_cfg = dict(max_epochs=1, type='EpochBasedTrainLoop', val_interval=1000)
-val_cfg = None
-val_dataloader = None
-val_evaluator = None
-test_cfg = None
-test_dataloader = None
-test_evaluator = None
 
+
+
+
+val_pipeline = [
+    dict(type='Collage', img_scale=img_scale, grid_range=(2, 11), mode='rescalecentercrop'),
+    dict(type='RandomChoiceResize',
+                    scales=[(1024, 1024)],
+                    keep_ratio=True),
+    dict(type='PackDetInputs', meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape', 'scale_factor'))
+]
+val_dataset = dict(
+    # use MultiImageMixDataset wrapper to support mosaic and mixup
+    type='MultiImageMixDataset',
+    dataset=dict(
+        type=dataset_type,
+        data_root=data_root,
+        ann_file='annotation.json',
+        data_prefix=dict(img='./'),
+        pipeline=[
+            dict(type='LoadImageFromFile', backend_args=None),
+            dict(type='LoadExtractClipText', 
+                        text_encoder_model='RN50', 
+                        save_folder=data_root+'capfeat/', init_clip=False, ann_file=data_root+'annotation.json')
+        ],
+        filter_cfg=dict(filter_empty_gt=False),
+        backend_args=None),
+    pipeline=val_pipeline)
+val_dataloader = dict(
+    batch_size=1,
+    num_workers=2,
+    persistent_workers=True,
+    sampler=dict(type='DefaultSampler', shuffle=False),
+    dataset=val_dataset)
+
+
+
+
+
+
+
+
+val_cfg = dict(type='ValLoop')
+test_cfg = dict(type='TestLoop')
+
+val_dataloader = val_dataloader
+test_dataloader = val_dataloader
+
+backend_args = None
+val_evaluator = dict(
+    type='CocoMetric',
+    ann_file='/home/fangyi/data/coco/' + 'annotations/instances_val2017.json',
+    metric='bbox',
+    format_only=False,
+    backend_args=backend_args)
+test_evaluator = val_evaluator
 
 
 

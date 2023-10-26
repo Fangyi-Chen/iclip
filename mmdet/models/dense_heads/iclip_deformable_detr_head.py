@@ -201,3 +201,56 @@ class IclipDeformableDETRHead(DeformableDETRHead):
             #print(local_rank, world_size, 4,caption_feat_1_GPU.shape)
             #print(local_rank, world_size, 5,caption_feat_7_GPU.shape)
             return caption_feat_all_GPU, gt_per_img
+
+    def predict(self,
+                hidden_states: Tensor,
+                references: List[Tensor],
+                batch_data_samples: SampleList,
+                rescale: bool = True) -> InstanceList:
+        """Perform forward propagation and loss calculation of the detection
+        head on the queries of the upstream network.
+
+        Args:
+            hidden_states (Tensor): Hidden states output from each decoder
+                layer, has shape (num_decoder_layers, num_queries, bs, dim).
+            references (list[Tensor]): List of the reference from the decoder.
+                The first reference is the `init_reference` (initial) and the
+                other num_decoder_layers(6) references are `inter_references`
+                (intermediate). The `init_reference` has shape (bs,
+                num_queries, 4) when `as_two_stage` of the detector is `True`,
+                otherwise (bs, num_queries, 2). Each `inter_reference` has
+                shape (bs, num_queries, 4) when `with_box_refine` of the
+                detector is `True`, otherwise (bs, num_queries, 2). The
+                coordinates are arranged as (cx, cy) when the last dimension is
+                2, and (cx, cy, w, h) when it is 4.
+            batch_data_samples (list[:obj:`DetDataSample`]): The Data
+                Samples. It usually includes information such as
+                `gt_instance`, `gt_panoptic_seg` and `gt_sem_seg`.
+            rescale (bool, optional): If `True`, return boxes in original
+                image space. Defaults to `True`.
+
+        Returns:
+            list[obj:`InstanceData`]: Detection results of each image
+            after the post process.
+        """
+        batch_gt_instances = []
+        batch_img_metas = []
+        caption_feat = []
+        idx_wrapper = 0
+
+        for data_sample in batch_data_samples:
+            batch_img_metas.append(data_sample.metainfo)
+
+            data_sample.gt_instances['labels'] += idx_wrapper # align the pseudo label with caption idx
+            idx_wrapper += len(data_sample.gt_instances['capfeats'])
+
+            batch_gt_instances.append(data_sample.gt_instances)
+            caption_feat.append(data_sample.gt_instances['capfeats'])
+
+        caption_feat_all_GPU, gt_per_img = self.gather_all_capfeat(caption_feat)
+
+        outs = self(hidden_states, references, caption_feat_all_GPU)
+
+        predictions = self.predict_by_feat(
+            *outs, batch_img_metas=batch_img_metas, rescale=rescale)
+        return predictions
