@@ -3860,82 +3860,42 @@ class CachedMixUp(BaseTransform):
 
 @TRANSFORMS.register_module()
 class Collage(BaseTransform):
-    """Mosaic augmentation.
-
-    Given 4 images, mosaic transform combines them into
-    one output image. The output image is composed of the parts from each sub-
-    image.
-
-    .. code:: text
-
-                        mosaic transform
-                           center_x
-                +------------------------------+
-                |       pad        |  pad      |
-                |      +-----------+           |
-                |      |           |           |
-                |      |  image1   |--------+  |
-                |      |           |        |  |
-                |      |           | image2 |  |
-     center_y   |----+-------------+-----------|
-                |    |   cropped   |           |
-                |pad |   image3    |  image4   |
-                |    |             |           |
-                +----|-------------+-----------+
-                     |             |
-                     +-------------+
-
-     The mosaic transform steps are as follows:
-
-         1. Choose the mosaic center as the intersections of 4 images
-         2. Get the left top image according to the index, and randomly
-            sample another 3 images from the custom dataset.
-         3. Sub image will be cropped if image is larger than mosaic patch
-
-    Required Keys:
-
-    - img
-    - gt_bboxes (BaseBoxes[torch.float32]) (optional)
-    - gt_bboxes_labels (np.int64) (optional)
-    - gt_ignore_flags (bool) (optional)
-    - mix_results (List[dict])
-
-    Modified Keys:
-
-    - img
-    - img_shape
-    - gt_bboxes (optional)
-    - gt_bboxes_labels (optional)
-    - gt_ignore_flags (optional)
-
-    Args:
-        img_scale (Sequence[int]): Image size before mosaic pipeline of single
-            image. The shape order should be (width, height).
-            Defaults to (640, 640).
-        center_ratio_range (Sequence[float]): Center ratio range of mosaic
-            output. Defaults to (0.5, 1.5).
-        bbox_clip_border (bool, optional): Whether to clip the objects outside
-            the border of the image. In some dataset like MOT17, the gt bboxes
-            are allowed to cross the border of images. Therefore, we don't
-            need to clip the gt bboxes in these cases. Defaults to True.
-        pad_val (int): Pad value. Defaults to 114.
-        prob (float): Probability of applying this transformation.
-            Defaults to 1.0.
-    """
 
     def __init__(self,
                  img_scale: Tuple[int, int] = (640, 640),
-                 grid_range: Tuple[int, int] = (2, 11)) -> None:
+                 grid_range: Tuple[int, int] = (2, 11),
+                 mode = 'resize') -> None:
         assert isinstance(img_scale, tuple)
         self.grid_range = grid_range
         log_img_scale(img_scale, skip_square=True, shape_order='wh')
         self.img_scale = img_scale
+        self.mode = mode
 
     @cache_randomness
     def get_indexes(self, dataset: BaseDataset) -> int:
         self.n = random.randint(self.grid_range[0], self.grid_range[1])
         indexes = [random.randint(0, len(dataset)) for _ in range(self.n**2-1)]
         return indexes
+
+    def patch_proc(self, img, size):
+        if self.mode == 'resize':
+            return mmcv.imresize(img, size)
+        elif self.mode == 'rescalecentercrop':
+            img = mmcv.imrescale(img, (size[0], 1e6))
+            img_height, img_width = img.shape[:2]
+
+            crop_height = size[1]
+            crop_width = size[0]
+            y1 = max(0, int(round((img_height - crop_height) / 2.)))
+            x1 = max(0, int(round((img_width - crop_width) / 2.)))
+            y2 = min(img_height, y1 + crop_height) - 1
+            x2 = min(img_width, x1 + crop_width) - 1
+            bboxes = np.array([x1, y1, x2, y2])
+
+            img = mmcv.imcrop(img, bboxes=bboxes)
+            return img
+        else:
+            raise AttributeError
 
     @autocast_box_type()
     def transform(self, results: dict) -> dict:
@@ -3947,12 +3907,10 @@ class Collage(BaseTransform):
 
         for i in range(self.n):
             if i == 0: # first row
-                img_row = mmcv.imresize(
-                        result_patch['img'], (sub_img_wh, sub_img_wh))
+                img_row = self.patch_proc(result_patch['img'], (sub_img_wh, sub_img_wh))
                 gt_bboxes = np.array([[sub_img_wh//2, sub_img_wh//2]], dtype=np.float32)
                 for other_patch in others_patch[0:self.n-1]:
-                    img_o = mmcv.imresize(
-                        other_patch['img'], (sub_img_wh, sub_img_wh))
+                    img_o = self.patch_proc(other_patch['img'], (sub_img_wh, sub_img_wh))
                     img_row = np.concatenate((img_row, img_o), axis=1)
                     gt_bboxes = np.concatenate((gt_bboxes, gt_bboxes[-1].reshape((1,2))+[sub_img_wh, 0]), axis=0)
                 img_col = img_row
@@ -3960,8 +3918,7 @@ class Collage(BaseTransform):
             else:
                 img_row = None
                 for other_patch in others_patch[i*self.n-1 : (i+1)*self.n-1]:
-                    img_o = mmcv.imresize(
-                        other_patch['img'], (sub_img_wh, sub_img_wh))
+                    img_o = self.patch_proc(other_patch['img'], (sub_img_wh, sub_img_wh))
                     img_row = np.concatenate((img_row, img_o), axis=1) if img_row is not None else img_o
                 img_col = np.concatenate((img_col, img_row), axis=0)
                 gt_bboxes = np.concatenate((gt_bboxes, gt_bboxes[-1,:].reshape((1,-1,2))+[[0, sub_img_wh]]), axis=0)
