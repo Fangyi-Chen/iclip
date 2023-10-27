@@ -86,7 +86,7 @@ val_dataloader = val_dataloader
 test_dataloader = val_dataloader
 
 val_evaluator = dict(
-    type='CocoMetric',
+    type='IclipMetric',
     ann_file=None,
     metric='bbox',
     format_only=False,

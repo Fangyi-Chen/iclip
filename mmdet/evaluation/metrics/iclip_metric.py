@@ -9,6 +9,7 @@ from typing import Dict, List, Optional, Sequence, Union
 import numpy as np
 import torch
 from mmengine.evaluator import BaseMetric
+from .coco_metric import CocoMetric
 from mmengine.fileio import dump, get_local_path, load
 from mmengine.logging import MMLogger
 from terminaltables import AsciiTable
@@ -20,7 +21,7 @@ from ..functional import eval_recalls
 
 
 @METRICS.register_module()
-class CocoMetric(BaseMetric):
+class IclipMetric(BaseMetric):
     """COCO evaluation metric.
 
     Evaluate AR, AP, and mAP for detection tasks including proposal/box
@@ -279,6 +280,7 @@ class CocoMetric(BaseMetric):
         Returns:
             str: The filename of the json file.
         """
+        self.dataset_meta['classes'] = list(range(100))
         categories = [
             dict(id=id, name=name)
             for id, name in enumerate(self.dataset_meta['classes'])
@@ -290,13 +292,13 @@ class CocoMetric(BaseMetric):
             img_id = gt_dict.get('img_id', idx)
             image_info = dict(
                 id=img_id,
-                width=gt_dict['width'],
-                height=gt_dict['height'],
+                width=1024,
+                height=1024,
                 file_name='')
             image_infos.append(image_info)
-            for ann in gt_dict['anns']:
-                label = ann['bbox_label']
-                bbox = ann['bbox']
+            for label, bbox in zip(gt_dict['anns']['labels'], gt_dict['anns']['bboxes']):
+                label = label.numpy()
+                bbox = bbox.numpy()
                 coco_bbox = [
                     bbox[0],
                     bbox[1],
@@ -309,17 +311,10 @@ class CocoMetric(BaseMetric):
                     1,  # coco api requires id starts with 1
                     image_id=img_id,
                     bbox=coco_bbox,
-                    iscrowd=ann.get('ignore_flag', 0),
+                    iscrowd=0,
                     category_id=int(label),
                     area=coco_bbox[2] * coco_bbox[3])
-                if ann.get('mask', None):
-                    mask = ann['mask']
-                    # area = mask_util.area(mask)
-                    if isinstance(mask, dict) and isinstance(
-                            mask['counts'], bytes):
-                        mask['counts'] = mask['counts'].decode()
-                    annotation['segmentation'] = mask
-                    # annotation['area'] = float(area)
+
                 annotations.append(annotation)
 
         info = dict(
@@ -372,10 +367,10 @@ class CocoMetric(BaseMetric):
             gt['img_id'] = data_sample['img_id']
             if self._coco_api is None:
                 # TODO: Need to refactor to support LoadAnnotations
-                assert 'instances' in data_sample, \
+                assert 'gt_instances' in data_sample, \
                     'ground truth is required for evaluation when ' \
                     '`ann_file` is not provided'
-                gt['anns'] = data_sample['instances']
+                gt['anns'] = data_sample['gt_instances']
             # add converted result to the results list
             self.results.append((gt, result))
 
