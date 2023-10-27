@@ -3870,7 +3870,7 @@ class Collage(BaseTransform):
         log_img_scale(img_scale, skip_square=True, shape_order='wh')
         self.img_scale = img_scale
         self.mode = mode
-q
+
     @cache_randomness
     def get_indexes(self, dataset: BaseDataset) -> int:
 
