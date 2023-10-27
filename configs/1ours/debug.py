@@ -50,7 +50,7 @@ train_cfg = dict(max_epochs=1, type='EpochBasedTrainLoop', val_interval=1000)
 
 
 val_pipeline = [
-    dict(type='Collage', img_scale=img_scale, grid_range=(2, 11), mode='rescalecentercrop'),
+    dict(type='Collage', img_scale=img_scale, grid_range=(2, 11)),
     dict(type='RandomChoiceResize',
                     scales=[(1024, 1024)],
                     keep_ratio=True),
