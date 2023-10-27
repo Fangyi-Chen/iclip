@@ -3857,7 +3857,6 @@ class CachedMixUp(BaseTransform):
         return repr_str
 
 
-
 @TRANSFORMS.register_module()
 class Collage(BaseTransform):
 
@@ -3873,7 +3872,6 @@ class Collage(BaseTransform):
 
     @cache_randomness
     def get_indexes(self, dataset: BaseDataset) -> int:
-
         self.n = random.randint(self.grid_range[0], self.grid_range[1])
         indexes = [random.randint(0, len(dataset)) for _ in range(self.n**2-1)]
         return indexes
