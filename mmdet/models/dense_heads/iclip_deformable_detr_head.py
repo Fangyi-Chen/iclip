@@ -45,7 +45,7 @@ class IclipDeformableDETRHead(DeformableDETRHead):
         if torch.cuda.device_count() > 1:
             assert gather_all_cap
 
-        self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1/0.07))
+        self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1/0.2))
         print('Using iclip deformable detr head!')
 
     def forward(self, hidden_states: Tensor,
@@ -91,7 +91,8 @@ class IclipDeformableDETRHead(DeformableDETRHead):
             hidden_state = hidden_states[layer_id]
             outputs_cls_feat = self.cls_branches[layer_id](hidden_state)
             outputs_cls_feat = F.normalize(outputs_cls_feat, dim=2)
-            outputs_class = outputs_cls_feat @ caption_feat_all_GPU * self.logit_scale.exp()
+            tempurature = min(self.logit_scale.exp(), 10.0)
+            outputs_class = outputs_cls_feat @ caption_feat_all_GPU * tempurature
 
             tmp_reg_preds = self.reg_branches[layer_id](hidden_state)
             if reference.shape[-1] == 4:
@@ -112,7 +113,7 @@ class IclipDeformableDETRHead(DeformableDETRHead):
         all_layers_outputs_classes = torch.stack(all_layers_outputs_classes)
         all_layers_outputs_coords = torch.stack(all_layers_outputs_coords)
         if np.random.randint(5000) == 1:
-            print(self.logit_scale.exp())
+            print(tempurature)
         return all_layers_outputs_classes, all_layers_outputs_coords
 
     def loss(self, hidden_states: Tensor, references: List[Tensor],
