@@ -101,7 +101,7 @@ class IclipDeformableDETRHead(DeformableDETRHead):
             hidden_state = hidden_states[layer_id]
             outputs_cls_feat = self.cls_branches[layer_id](hidden_state)
             outputs_cls_feat = F.normalize(outputs_cls_feat, dim=2)
-            tempurature = min(self.logit_scale.exp(), 10.0)
+            tempurature = torch.clip(self.logit_scale.exp(), min=None, max=10.0)
             outputs_class = outputs_cls_feat @ caption_feat_all_GPU * tempurature
 
             tmp_reg_preds = self.reg_branches[layer_id](hidden_state)
