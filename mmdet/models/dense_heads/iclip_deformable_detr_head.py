@@ -48,6 +48,16 @@ class IclipDeformableDETRHead(DeformableDETRHead):
         self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1/0.2))
         print('Using iclip deformable detr head!')
 
+    def init_weights(self) -> None:
+        """Initialize weights of the Deformable DETR head."""
+
+        for m in self.reg_branches:
+            constant_init(m[-1], 0, bias=0)
+        nn.init.constant_(self.reg_branches[0][-1].bias.data[2:], -2.0)
+        if self.as_two_stage:
+            for m in self.reg_branches:
+                nn.init.constant_(m[-1].bias.data[2:], 0.0)
+
     def forward(self, hidden_states: Tensor,
                 references: List[Tensor],
                 caption_feat_all_GPU) -> Tuple[Tensor]:
