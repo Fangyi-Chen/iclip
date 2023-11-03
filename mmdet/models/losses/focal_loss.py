@@ -189,7 +189,7 @@ class FocalLoss(nn.Module):
                 Defaults to False.
         """
         super(FocalLoss, self).__init__()
-        assert use_sigmoid is True, 'Only sigmoid focal loss supported now.'
+        # assert use_sigmoid is True, 'Only sigmoid focal loss supported now.'
         self.use_sigmoid = use_sigmoid
         self.gamma = gamma
         self.alpha = alpha
@@ -249,5 +249,29 @@ class FocalLoss(nn.Module):
                 avg_factor=avg_factor)
 
         else:
-            raise NotImplementedError
+            n = pred.shape[0]
+            range_n = torch.arange(0, n, dtype=torch.int64, device=target.device)
+
+            p = torch.softmax(pred, dim=1)
+            p = p[range_n, target]
+            loss = -(1 - p) ** self.gamma * torch.log(p)
+
+            if weight is not None:
+                if weight.shape != loss.shape:
+                    if weight.size(0) == loss.size(0):
+                        # For most cases, weight is of shape (num_priors, ),
+                        #  which means it does not have the second axis num_class
+                        weight = weight.view(-1, 1)
+                    else:
+                        # Sometimes, weight per anchor per class is also needed. e.g.
+                        #  in FSAF. But it may be flattened of shape
+                        #  (num_priors x num_class, ), while loss is still of shape
+                        #  (num_priors, num_class).
+                        assert weight.numel() == loss.numel()
+                        weight = weight.view(loss.size(0), -1)
+                assert weight.ndim == loss.ndim
+
+            loss_cls = weight_reduce_loss(loss, weight, reduction, avg_factor)
+
         return loss_cls
+

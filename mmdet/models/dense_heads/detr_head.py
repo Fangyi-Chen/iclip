@@ -113,7 +113,7 @@ class DETRHead(BaseModule):
         if self.loss_cls.use_sigmoid:
             self.cls_out_channels = num_classes
         else:
-            self.cls_out_channels = num_classes + 1
+            self.cls_out_channels = num_classes
 
         self._init_layers()
 
