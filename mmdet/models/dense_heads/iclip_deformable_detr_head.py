@@ -265,3 +265,4 @@ class IclipDeformableDETRHead(DeformableDETRHead):
         predictions = self.predict_by_feat(
             *outs, batch_img_metas=batch_img_metas, rescale=rescale)
         return predictions
+
