@@ -1,4 +1,4 @@
-_base_ = 'debug.py'
+_base_ = 'base_rescale.py'
 
 
 model = dict(bbox_head=dict(type='IclipDeformableDETRHead3'))
