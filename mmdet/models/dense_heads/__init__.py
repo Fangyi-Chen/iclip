@@ -52,6 +52,7 @@ from .yolof_head import YOLOFHead
 from .yolox_head import YOLOXHead
 from .iclip_deformable_detr_head import IclipDeformableDETRHead
 from .iclip_deformable_detr_head2 import IclipDeformableDETRHead2
+from .iclip_deformable_detr_head3 import IclipDeformableDETRHead3
 
 __all__ = [
     'AnchorFreeHead', 'AnchorHead', 'GuidedAnchorHead', 'FeatureAdaption',

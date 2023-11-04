@@ -17,7 +17,7 @@ from .deformable_detr_head import DeformableDETRHead
 import numpy as np
 
 @MODELS.register_module()
-class IclipDeformableDETRHead(DeformableDETRHead):
+class IclipDeformableDETRHead3(DeformableDETRHead):
     r"""Head of DeformDETR: Deformable DETR: Deformable Transformers for
     End-to-End Object Detection.
 
@@ -45,8 +45,7 @@ class IclipDeformableDETRHead(DeformableDETRHead):
         if torch.cuda.device_count() > 1:
             assert gather_all_cap
 
-        self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1/0.2))
-        print('Using iclip deformable detr head!')
+        print('Using iclip deformable detr head 3!  using sigmoid without normalizing feature and no temperature')
 
     def init_weights(self) -> None:
         """Initialize weights of the Deformable DETR head."""
@@ -100,9 +99,9 @@ class IclipDeformableDETRHead(DeformableDETRHead):
             # NOTE The last reference will not be used.
             hidden_state = hidden_states[layer_id]
             outputs_cls_feat = self.cls_branches[layer_id](hidden_state)
-            outputs_cls_feat = F.normalize(outputs_cls_feat, dim=2)
-            tempurature = torch.clip(self.logit_scale.exp(), min=None, max=10.0)
-            outputs_class = outputs_cls_feat @ caption_feat_all_GPU * tempurature
+            #outputs_cls_feat = F.normalize(outputs_cls_feat, dim=2)
+            #tempurature = torch.clip(self.logit_scale.exp(), min=None, max=10.0)
+            outputs_class = outputs_cls_feat @ caption_feat_all_GPU # * tempurature
 
             tmp_reg_preds = self.reg_branches[layer_id](hidden_state)
             if reference.shape[-1] == 4:
@@ -122,8 +121,8 @@ class IclipDeformableDETRHead(DeformableDETRHead):
 
         all_layers_outputs_classes = torch.stack(all_layers_outputs_classes)
         all_layers_outputs_coords = torch.stack(all_layers_outputs_coords)
-        if np.random.randint(5000) == 1:
-            print(tempurature)
+        #if np.random.randint(5000) == 1:
+            #print(tempurature)
         return all_layers_outputs_classes, all_layers_outputs_coords
 
     def loss(self, hidden_states: Tensor, references: List[Tensor],
@@ -189,7 +188,7 @@ class IclipDeformableDETRHead(DeformableDETRHead):
         gt_per_img = [len(_) for _ in caption_feat]
 
         caption_feat_1_GPU = torch.cat(caption_feat, dim=0)
-        caption_feat_1_GPU = F.normalize(caption_feat_1_GPU, dim=1)
+        #caption_feat_1_GPU = F.normalize(caption_feat_1_GPU, dim=1)
         pad_caption_feat_1_GPU = torch.nn.functional.pad(caption_feat_1_GPU,
                                                          (0, 0, 0, batch_size_per_GPU*100 - caption_feat_1_GPU.shape[0])) # 100 means the max collage
 
