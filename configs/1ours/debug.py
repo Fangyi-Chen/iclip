@@ -6,7 +6,7 @@ data_root = '/media/fangyi/2019/2023/data/yfcc15m/'
 img_scale = (1024, 1024)  # width, height
 
 train_pipeline = [
-    dict(type='Collage', img_scale=img_scale, grid_range=(2, 11), mode='rescalecentercrop'),
+    dict(type='Collage', img_scale=img_scale, grid_range=(2, 11)),
     dict(type='RandomChoiceResize',
                     scales=[(608, 608), (640, 640), (672, 672), (704, 704),
                             (736, 763), (768, 768), (800, 1333), (832, 832), 
