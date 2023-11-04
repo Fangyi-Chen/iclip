@@ -45,7 +45,7 @@ model = dict(bbox_head=dict(type='IclipDeformableDETRHead', num_classes=1024, ga
 
 max_iters = 102622   # 102622 is 1 epoch with batchsize 18*8  each iter == clip 43 epochs  18*8*102622 = 15M
                      # 102622 is 1/3 epoch with bs      6*8   each iter == clip 135 iter    6*8*102622  = 5M   
-# learning rate
+
 param_scheduler = [
     dict(
         type='MultiStepLR',
@@ -53,13 +53,14 @@ param_scheduler = [
         end=max_iters,
         by_epoch=False,
         milestones=[max_iters // 5 * 4],
-        gamma=0.1)
-]
+        gamma=0.1)]
+
 train_cfg = dict(
     _delete_ = True,
     type='IterBasedTrainLoop',
     max_iters=max_iters,
     val_interval=10000000000000)
+
 default_hooks = dict(
     checkpoint=dict(
         type='CheckpointHook',
