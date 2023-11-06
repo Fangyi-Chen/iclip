@@ -1,0 +1,19 @@
+_base_ = 'pretrained_clip_rescale_collage+.py'
+
+
+model = dict(bbox_head=dict(type='IclipDeformableDETRHead2',
+                            loss_cls=dict(
+                                type='FocalLoss',
+                                use_sigmoid=False, # false = softmax
+                                gamma=2.0,
+                                alpha=0.25,
+                                loss_weight=2.0),),
+             train_cfg=dict(
+                 assigner=dict(
+                     match_costs=[
+                         dict(type='FocalLossSoftmaxCost', weight=2.0, gamma=2.0,),
+                         dict(type='BBoxL1Cost', weight=0.0, box_format='xywh'),
+                         dict(type='IoUCost', iou_mode='giou', weight=0.0)
+                     ])),
+        )
+
